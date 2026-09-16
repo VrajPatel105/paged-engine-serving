@@ -16,3 +16,6 @@ venv/
 *.safetensors
 wandb/
 *.pkl
+
+#env
+servingenv/
