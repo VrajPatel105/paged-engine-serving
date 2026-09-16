@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi import HTTPException
 import time
+from app.schemas import UserInput
 
 # module level flag
 is_ready = False
@@ -27,3 +28,9 @@ async def health():
     if not is_ready:
         raise HTTPException(status_code=503, detail="not ready")
     return {"status": "ready"}
+
+
+@app.post("/generate")
+async def generate(data: UserInput): 
+    return {"text": "Hey, this is the model temp output"}
+    
