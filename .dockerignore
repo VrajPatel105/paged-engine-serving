@@ -1,0 +1,6 @@
+models/
+servingenv/
+.env
+.git
+__pycache__/
+*.pyc
