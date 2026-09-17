@@ -11,6 +11,7 @@ import time
 import os
 from dotenv import load_dotenv
 load_dotenv()
+TIMEOUT=60
 
 CHECKPOINT_PATH = os.environ.get("CHECKPOINT_PATH")
 TOKENIZER_PATH = os.environ.get("TOKENIZER_PATH")
@@ -74,6 +75,16 @@ async def health():
 
 
 @app.post("/generate")
-async def generate(data: UserInput): 
-    return {"text": "Hey, this is the model temp output"}
+def generate(data: UserInput):
+
+    output_id = engine.submit(engine.tok.encode_sentence(data.prompt, add_sos=True, add_eos=False))
+    start = time.time()
+    while True:
+        entry = engine.results.get(output_id)
+        if entry is not None and entry[1]:
+            return {"text": entry[0]}
+        if time.time() - start > TIMEOUT:
+            raise HTTPException(status_code=504, detail="generation timed out")
+        time.sleep(0.05)
+        
     
