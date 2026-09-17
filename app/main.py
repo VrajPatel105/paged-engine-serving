@@ -6,11 +6,14 @@ import queue
 from core.model_runner import Engine
 import pickle
 import threading
+from core.config import core_configurations
 from transformer.load_checkpoint import load_trained_weights
 import time
 import os
 from dotenv import load_dotenv
 load_dotenv()
+
+
 TIMEOUT=60
 
 CHECKPOINT_PATH = os.environ.get("CHECKPOINT_PATH")
@@ -99,3 +102,12 @@ def generate(data: UserInput):
         print("length of engine.results after: ", len(engine.results))
         
     
+@app.get("/metrics")
+async def metrics():
+    return {
+        'free_blocks' : engine.block_manager_obj.num_free_blocks(),
+        'total_blocks' : engine.block_manager_obj.num_blocks,
+        'waiting_seq' : len(engine.scheduler_obj.waiting_requests),
+        'running_seq' : len(engine.scheduler_obj.running_requests),
+        'total_requests' : engine.seq_cnt
+    }
