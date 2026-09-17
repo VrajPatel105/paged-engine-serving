@@ -1,0 +1,9 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0
+paged-inference-engine @ git+https://github.com/VrajPatel105/paged-inference-engine.git@v1.6
+fastapi==0.141.1
+uvicorn==0.52.3
+python-dotenv==1.2.3
+boto3
+pytest
+httpx
