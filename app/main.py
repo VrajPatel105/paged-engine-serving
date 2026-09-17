@@ -12,12 +12,16 @@ import time
 import os
 from dotenv import load_dotenv
 load_dotenv()
+import boto3
 
 
 TIMEOUT=60
 
 CHECKPOINT_PATH = os.environ.get("CHECKPOINT_PATH")
 TOKENIZER_PATH = os.environ.get("TOKENIZER_PATH")
+S3_BUCKET = os.environ.get("S3_BUCKET")
+S3_KEY_CHECKPOINT = os.environ.get("S3_KEY_CHECKPOINT")
+S3_KEY_TOKENIZER = os.environ.get("S3_KEY_TOKENIZER")
 
 engine = None
 engine_thread = None
@@ -29,6 +33,13 @@ async def lifespan(app: FastAPI):
     global engine, engine_thread, is_ready
 
     global_start_time = time.time()
+
+    # s3 client
+    s3 = boto3.client('s3')
+    if not os.path.exists(CHECKPOINT_PATH):
+        s3.download_file(S3_BUCKET, S3_KEY_CHECKPOINT, CHECKPOINT_PATH)
+    if not os.path.exists(TOKENIZER_PATH):
+        s3.download_file(S3_BUCKET, S3_KEY_TOKENIZER, TOKENIZER_PATH)
 
     model = load_trained_weights(CHECKPOINT_PATH)
 

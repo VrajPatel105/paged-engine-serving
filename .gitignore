@@ -19,3 +19,4 @@ wandb/
 
 #env
 servingenv/
+models/
