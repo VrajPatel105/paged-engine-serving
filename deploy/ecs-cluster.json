@@ -1,0 +1,154 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "ECS cluster with a GPU EC2 capacity provider for the paged inference engine serving container.",
+  "Parameters": {
+    "ECSClusterName": {
+      "Type": "String",
+      "Description": "Name of the ECS cluster the instances register with",
+      "Default": "paged-engine-cluster"
+    },
+    "SecurityGroupIds": {
+      "Type": "CommaDelimitedList",
+      "Description": "Security group allowing inbound TCP 8000",
+      "Default": ""
+    },
+    "VpcId": {
+      "Type": "String",
+      "Description": "VPC to launch container instances in",
+      "Default": "",
+      "AllowedPattern": "^(?:vpc-[0-9a-f]{8,17}|)$",
+      "ConstraintDescription": "VPC Id must begin with 'vpc-' and have a valid uuid"
+    },
+    "SubnetIds": {
+      "Type": "CommaDelimitedList",
+      "Description": "Public subnets for the container instances",
+      "Default": ""
+    },
+    "LatestECSOptimizedAMI": {
+      "Description": "ECS GPU-optimized AMI. The non-GPU AMI has no NVIDIA drivers and the container will not see a device.",
+      "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+      "Default": "/aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended/image_id"
+    },
+    "Ec2InstanceProfileArn": {
+      "Type": "String",
+      "Description": "ARN of the instance profile with AmazonEC2ContainerServiceforEC2Role",
+      "Default": ""
+    },
+    "KeyName": {
+      "Type": "String",
+      "Description": "Optional EC2 key pair for SSH debugging",
+      "Default": ""
+    }
+  },
+  "Resources": {
+    "ECSCluster": {
+      "Type": "AWS::ECS::Cluster",
+      "Properties": {
+        "ClusterName": { "Ref": "ECSClusterName" },
+        "ClusterSettings": [
+          { "Name": "containerInsights", "Value": "enhanced" }
+        ],
+        "Configuration": {
+          "ExecuteCommandConfiguration": { "Logging": "DEFAULT" }
+        },
+        "Tags": []
+      }
+    },
+    "ECSLaunchTemplate": {
+      "Type": "AWS::EC2::LaunchTemplate",
+      "DependsOn": "ECSCluster",
+      "Properties": {
+        "LaunchTemplateData": {
+          "ImageId": { "Ref": "LatestECSOptimizedAMI" },
+          "NetworkInterfaces": [
+            {
+              "AssociatePublicIpAddress": true,
+              "DeviceIndex": 0,
+              "DeleteOnTermination": true,
+              "Groups": { "Ref": "SecurityGroupIds" }
+            }
+          ],
+          "InstanceType": "g4dn.xlarge",
+          "KeyName": { "Ref": "KeyName" },
+          "IamInstanceProfile": {
+            "Arn": { "Ref": "Ec2InstanceProfileArn" }
+          },
+          "BlockDeviceMappings": [
+            {
+              "DeviceName": "/dev/xvda",
+              "Ebs": { "VolumeSize": 100 }
+            }
+          ],
+          "UserData": {
+            "Fn::Base64": {
+              "Fn::Sub": [
+                "#!/bin/bash \necho ECS_CLUSTER=${ClusterName} >> /etc/ecs/ecs.config;",
+                { "ClusterName": { "Ref": "ECSClusterName" } }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "ECSAutoScalingGroup": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "DependsOn": "ECSCluster",
+      "Properties": {
+        "MinSize": 1,
+        "MaxSize": 1,
+        "DesiredCapacity": 1,
+        "LaunchTemplate": {
+          "LaunchTemplateId": { "Ref": "ECSLaunchTemplate" },
+          "Version": {
+            "Fn::GetAtt": ["ECSLaunchTemplate", "LatestVersionNumber"]
+          }
+        },
+        "VPCZoneIdentifier": { "Ref": "SubnetIds" },
+        "Tags": [
+          {
+            "Key": "Name",
+            "PropagateAtLaunch": true,
+            "Value": {
+              "Fn::Join": [" - ", ["ECS Instance", { "Ref": "ECSClusterName" }]]
+            }
+          }
+        ]
+      }
+    },
+    "AsgCapacityProvider": {
+      "Type": "AWS::ECS::CapacityProvider",
+      "Properties": {
+        "AutoScalingGroupProvider": {
+          "AutoScalingGroupArn": { "Ref": "ECSAutoScalingGroup" },
+          "ManagedScaling": { "Status": "ENABLED", "TargetCapacity": 100 },
+          "ManagedTerminationProtection": "DISABLED"
+        }
+      }
+    },
+    "ClusterCPAssociation": {
+      "Type": "AWS::ECS::ClusterCapacityProviderAssociations",
+      "DependsOn": "ECSCluster",
+      "Properties": {
+        "Cluster": { "Ref": "ECSClusterName" },
+        "CapacityProviders": [
+          "FARGATE",
+          "FARGATE_SPOT",
+          { "Ref": "AsgCapacityProvider" }
+        ],
+        "DefaultCapacityProviderStrategy": [
+          {
+            "Base": 0,
+            "Weight": 1,
+            "CapacityProvider": { "Ref": "AsgCapacityProvider" }
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "ECSCluster": {
+      "Description": "The created cluster.",
+      "Value": { "Ref": "ECSCluster" }
+    }
+  }
+}
